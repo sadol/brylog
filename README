@@ -1,0 +1,37 @@
+0. brylog - simple linux Brymen 257 multimeter logger with GUI.
+
+1. Requirements:
+
+    python 3.3
+    matplotlib 1.3
+    pyserial 2.6
+
+
+2. Program files:
+
+    brylog.py -> main program file
+    /configure -> configuration directory for serial devices' files
+    /libs/brymen257.py -> main Brymen 257 processing module
+    /libs/configDictionaries.py -> config module for widgets
+    /libs/configSubFrame.py -> widget module responsible
+                               for serial device configuration
+    /libs/plotFrame.py -> ploting module
+    /libs/serialDevice.py -> 'virtual class' module for future impovements
+    /save -> saved logging files directory
+
+
+3. How to start.
+
+    a. turn on your Brymen in serial mode and connect it to PC
+    b. run brylog.py
+    c. click CONFIG button
+    d. set serial interface mask for Brymen
+       (or used saved one by clicking LOAD button)
+    e. save mask by clicking SAVE button
+    f. click SAVE button on the main panel
+
+
+4. End notes.
+
+    This is my first project in Python so be free to post any comments related
+    with possible code impovements.
