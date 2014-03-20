@@ -19,7 +19,6 @@
     /libs/configSubFrame.py -> widget module responsible
                                for serial device configuration
     /libs/plotFrame.py -> ploting module
-    /libs/serialDevice.py -> 'virtual class' module for future impovements
     /save -> saved logging files directory
 
 
@@ -36,5 +35,6 @@
 
 4. End notes.
 
-    This is my first project in Python so be free to post any comments related
-    with possible code impovements.
+    This program could be used for other than BM257 models after modifications
+    in libs/brymen257.py file.
+
