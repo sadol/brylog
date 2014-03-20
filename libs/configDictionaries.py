@@ -17,8 +17,12 @@ lbConfSmall = {'font': (fnt.BOLD, 12, fnt.ROMAN), 'foreground': 'black'}
 #small label config------------------------------------------------------------
 lbConfSmallRed = {'font': (fnt.BOLD, 12, fnt.ROMAN), 'foreground': 'red'}
 
+#all buttons config------------------------------------------------------------
+allBut = {'height': 1, 'width': 10}
 #ok button config--------------------------------------------------------------
 okbConf = {'font': (fnt.BOLD, 10, fnt.ROMAN)}
+okbConf.update(allBut)
 
 #cancel button config
 clbConf = {'font': (fnt.BOLD, 10, fnt.ROMAN)}
+clbConf.update(allBut)

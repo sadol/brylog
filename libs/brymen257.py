@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import libs.serialDevice as sd  # virtual class for serial devices
 import time
 import sys
+import serial
 
 
 class PeriodError(Exception):
-    """
-    error class for Brymen257.period function
-    """
+    """error class for Brymen257.period function"""
     def __init__(self, value):
         self.value = value
 
@@ -29,133 +27,134 @@ multiplier = {' ': 1,
               'k': 1000,
               'M': 1000000}
 
+# digits decoder dictionary : key->(first Bit, second Bit), value->output digit
+digits = {('111', '1011'): '0', ('000', '0000'): '0',
+          ('000', '1010'): '1',
+          ('101', '1101'): '2',
+          ('100', '1111'): '3',
+          ('010', '1110'): '4',
+          ('110', '0111'): '5',
+          ('111', '0111'): '6',
+          ('100', '1010'): '7',
+          ('111', '1111'): '8',
+          ('110', '1111'): '9',
+          ('111', '0001'): ' '}     # for temperature measuring
 
-#-------------------- brymen 257 class-----------------------------------------
-class Brymen257(sd.SerialDevice):
-    """
-    Brymen 257 multimeter class
-    """
 
+class Brymen257(serial.Serial):
+    """Brymen 257 multimeter class"""
     def __init__(self, port):
-        """
-        serial.Serial.__init__()
-        value : (float) -> value read from mulimeter
-        unit : string
-        seconds : float -> base time
-        """
-        sd.serial.Serial.__init__(self, port=port, baudrate=9600,
-                                  bytesize=sd.serial.EIGHTBITS,
-                                  parity=sd.serial.PARITY_NONE,
-                                  stopbits=sd.serial.STOPBITS_ONE,
-                                  timeout=1)
+        """Arguments:
+            port ->(string) linux port id"""
+        serial.Serial.__init__(self, port=port, baudrate=9600,
+                               bytesize=serial.EIGHTBITS,
+                               parity=serial.PARITY_NONE,
+                               stopbits=serial.STOPBITS_ONE, timeout=1)
         self.value = 0.00
         self.unit = ' '
-        self.seconds = 0.0
+        self.seconds = 0.00
+        self.port = port
 
     def _setFrame(self, dataFrame):
-        '''populates internal output buffer --> for immediate use in program
-         - minus   + plus   0[.]0[.]0[.]0 number format
-        u mikro   n nano   m mili   k kilo   M mega   [=|~]V Volt   A Amper
-        O Ohm   F Farad   H Hertz   C Celcius'''
+        """populates internal data buffers"""
         self.seconds = time.time()
-        characters = ""  # characters intermediate bufor
+        characters = ""                  # temporary buffer
         self.unit = self._currentType(dataFrame)
         characters += self._signType(dataFrame)
-        characters += self._firstDigit(dataFrame)
-        characters += self._secondDigit(dataFrame)
-        characters += self._thirdDigit(dataFrame)
-        characters += self._fourthDigit(dataFrame)
-        if(characters[-1] == ' '):  # temperature
+        for i in range(1, 5):            # extract digits
+            characters += self._giveDigit(dataFrame, 2 * i + 1, 2 * i + 2)
+        if(characters[-1] == ' '):       # temperature special code
             self.unit = 'C'
             self.value = float(characters)
         else:
             characters = self._period(dataFrame, characters)
-            try:  # multimeter lcd error values handling
+            try:                         # multimeter lcd error values handling
                 self.value = float(characters[1:7])
             except ValueError:
-                self.value = (-1000)  # error code for further handling!!!!
+                self.value = (-1000)     # error code for further handling!!!!
             if(self.value != (-1000)):
                 self.value *= multiplier[self._prefix(dataFrame)]
             self.unit += self._names(dataFrame)
 
     def getFrame(self):
-        """
-        returns raw data frame and triggers its processing
-        """
-        rawData = self.read(15)  # magic number of read bytes for brymen257
+        """returns raw data frame and triggers its processing
+
+        Arguments:
+
+        Returns:
+            raw data frame from multimeter"""
+        rawData = self.read(15)      # magic number of read bytes for brymen257
         if(self._isOK(rawData)):
             self._setFrame(rawData)
-            return rawData  # for further checks in higher classes
+            return rawData           # for further checks in higher classes
         else:
             return None
 
     def getData(self):
-        '''returns output buffer values
-        output: (timebase, value, unit) tuple'''
+        """returns output buffer values
+
+        Argumentrs:
+
+        Returns:
+            tuple: (timebase, value, unit)"""
         self.getFrame()
         return (self.seconds, self.value, self.unit)
 
     def _currentType(self, dataFrame):
-        '''returns current type indicators'''
+        """returns current type indicators
+
+        Arguments:
+            dataFrame -> raw frame of data from multimeter
+
+        Returns:
+            string -> ~(AC), =(DC), ' '(other)"""
         byte1 = binBit(dataFrame[1])
-        if(byte1[5] == '1'):  # DC
+        if(byte1[5] == '1'):     # DC
             return "="
-        if(byte1[6] == '1'):  # AC
+        if(byte1[6] == '1'):     # AC
             return "~"
         if(byte1[5:7] == '00'):
-            return " "  # for Ohms etc.
+            return " "           # for Ohms etc.
 
     def _signType(self, dataFrame):
-        '''returns sign of the number'''
+        """returns sign of the number
+
+        Arguments:
+            dataFrame -> raw frame of data from multimeter
+
+        Returns:
+            string -> - or +"""
         byte1 = binBit(dataFrame[3])
         if(byte1[7] == '1'):
             return "-"
-        else:
-            return "+"
+        return "+"
 
     def _giveDigit(self, dataFrame, firstByte, secondByte):
-        '''decodes digit bits from two bytes'''
+        """decodes digit bits from two bytes
+
+        Arguments:
+            dataFrame  -> raw data object
+            firstByte  -> first bite of the data
+            secondByte -> second bite of the data
+
+        Returns:
+            one digit or error code"""
         byte1 = binBit(dataFrame[firstByte])[4:7]
         byte2 = binBit(dataFrame[secondByte])[4:]
-        if((byte1 == '111' and byte2 == '1011') or
-                (byte1 == '000' and byte2 == '0000')):
-            return '0'
-        if(byte1 == '000' and byte2 == '1010'):
-            return '1'
-        if(byte1 == '101' and byte2 == '1101'):
-            return '2'
-        if(byte1 == '100' and byte2 == '1111'):
-            return '3'
-        if(byte1 == '010' and byte2 == '1110'):
-            return '4'
-        if(byte1 == '110' and byte2 == '0111'):
-            return '5'
-        if(byte1 == '111' and byte2 == '0111'):
-            return '6'
-        if(byte1 == '100' and byte2 == '1010'):
-            return '7'
-        if(byte1 == '111' and byte2 == '1111'):
-            return '8'
-        if(byte1 == '110' and byte2 == '1111'):
-            return '9'
-        if(byte1 == '111' and byte2 == '0001'):
-            return ' '  # it is for temperature measuring
-        return 'R'  # for various lcd error codes
-
-    def _firstDigit(self, dataFrame):
-        return self._giveDigit(dataFrame, 3, 4)
-
-    def _secondDigit(self, dataFrame):
-        return self._giveDigit(dataFrame, 5, 6)
-
-    def _thirdDigit(self, dataFrame):
-        return self._giveDigit(dataFrame, 7, 8)
-
-    def _fourthDigit(self, dataFrame):
-        return self._giveDigit(dataFrame, 9, 10)
+        try:
+            return digits[(byte1, byte2)]
+        except KeyError:
+            return 'R'      # for various error codes
 
     def _period(self, dataFrame, characters):
-        '''returns string with period at correct position'''
+        """returns string with period at correct position
+
+        Arguments:
+            dataFrame  -> raw data frame from multimeter
+            characters -> preprepared string of digits
+
+        Returns:
+            string with correctly positioned period sign"""
         if(len(characters) != 5):
             raise PeriodError('period error : characters <> 5')
             sys.exit(1)
@@ -171,7 +170,13 @@ class Brymen257(sd.SerialDevice):
             return characters[:4] + '.' + characters[4:]
 
     def _prefix(self, dataFrame):
-        '''returns sci prefix'''
+        """returns sci prefix
+
+        Arguments:
+            dataFrame -> raw data frame from multimeter
+
+        Returns:
+            prefix"""
         byte1 = binBit(dataFrame[11])
         byte2 = binBit(dataFrame[12])
         byte3 = binBit(dataFrame[13])
@@ -185,10 +190,16 @@ class Brymen257(sd.SerialDevice):
             return 'u'
         if(byte3[7] == '1'):
             return 'm'
-        return " "  # else -> no prefix
+        return ' '
 
     def _names(self, dataFrame):
-        '''returns V ,O, A , H'''
+        """returns physical quantity
+
+        Arguments:
+            dataFrame -> raw data frame from multimeter
+
+        Return:
+            quantity"""
         byte1 = binBit(dataFrame[12])
         byte2 = binBit(dataFrame[13])
         byte3 = binBit(dataFrame[14])
@@ -202,18 +213,22 @@ class Brymen257(sd.SerialDevice):
             return 'V'
         if(byte3[6] == '1'):
             return 'A'
-        return ' '  # else
+        return ' '
 
     def restartSerialDevice(self):
-        '''restarts connection with brymen'''
-        sd.serial.Serial.close(self)
-        sd.serial.Serial.open(self)
+        """restarts connection with brymen"""
+        serial.Serial.close(self)
+        serial.Serial.open(self)
         time.sleep(0.2)
 
     def _isOK(self, dataFrame):
-        """
-        simple format check for brymen257
-        """
+        """simple format check for brymen257
+
+        Arguments:
+            dataFrame -> raw data frame from multimeter
+
+        Returns:
+            boolean"""
         if(len(dataFrame) != 15):
             self.restartSerialDevice()
             return False
@@ -233,7 +248,7 @@ if __name__ == "__main__":
         while True:
             buf = multimeter.getData()  # decodes this frame
             #print(str(buf[0]) + '\t' + str(buf[1]) + '\t' + str(buf[2]))
-            f.write('\t'.join((str(buf[0]),  str(buf[1]),  str(buf[2]), '\n')))
+            f.write('\t'.join((str(buf[0]), str(buf[1]), str(buf[2]), '\n')))
             f.flush()
             multimeter.flushOutput()
     f.close()
