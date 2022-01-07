@@ -68,9 +68,27 @@ class ConfigFrame(tk.Frame):
         self.timeL = tk.Label(master=self.conFr, text='NONE', fg='red')
         self.timeL.grid(row=7, column=1, sticky=tk.W)
 
+        #--------------data section--------------------------------------------
+        self.dataFr = tk.Frame(master=self, **cfd.frConf)
+        self.dataFr.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW)
+        tk.Label(master=self.dataFr, text='DATA',
+                 **cfd.lbConf).grid(row=0, column=0, columnspan=2, sticky=tk.W)
+        tk.Label(master=self.dataFr, text='Value:',
+                 **cfd.lbConfSmall).grid(row=1, column=0, sticky=tk.E)
+        self.valueL = tk.Label(master=self.dataFr, text='--')
+        self.valueL.grid(row=1, column=1, sticky=tk.W)
+        tk.Label(master=self.dataFr, text='Display:',
+                 **cfd.lbConfSmall).grid(row=2, column=0, sticky=tk.E)
+        self.displayL = tk.Label(master=self.dataFr, text='--')
+        self.displayL.grid(row=2, column=1, sticky=tk.W)
+        tk.Label(master=self.dataFr, text='Info:',
+                 **cfd.lbConfSmall).grid(row=3, column=0, sticky=tk.E)
+        self.infoL = tk.Label(master=self.dataFr, text='--')
+        self.infoL.grid(row=3, column=1, sticky=tk.W)
+
         #--------------save section--------------------------------------------
         self.conectFr = tk.Frame(master=self, **cfd.frConf)
-        self.conectFr.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW)
+        self.conectFr.grid(row=2, column=0, columnspan=2, sticky=tk.NSEW)
         tk.Label(master=self.conectFr, text='SAVE OUTPUT TO FILE',
                  **cfd.lbConf).grid(row=1, column=0, columnspan=2,
                                     sticky=tk.EW)
@@ -94,8 +112,8 @@ class ConfigFrame(tk.Frame):
 
         #---------plot section ------------------------------------------------
         self.plotFr = tk.Frame(master=self, **cfd.frConf)
-        self.plotFr.grid(row=0, column=2, rowspan=2, sticky=tk.EW)
-        self.plot = plf.PlotFrame(self.plotFr, self.plotQueue, self.delay)
+        self.plotFr.grid(row=0, column=2, rowspan=3, sticky=tk.EW)
+        self.plot = plf.PlotFrame(self.plotFr, self.plotQueue, self.delay, self.valueL, self.displayL, self.infoL)
         self.plot.grid()
 
     def _mainDataProducer(self):
@@ -142,7 +160,8 @@ class ConfigFrame(tk.Frame):
             try:
                 temp = self.saveQueue.get()
                 for i in temp:
-                    self.fo.write(str(i) + '\t')
+                    text = ', '.join(sorted(i)) if isinstance(i, set) else str(i)
+                    self.fo.write(text + '\t')
                 self.fo.write('\n')
                 self.fo.flush()  # don't buffer
                 self.saveQueue.task_done()
