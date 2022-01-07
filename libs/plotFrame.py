@@ -7,18 +7,25 @@ mpl.use('TkAgg')
 from collections import deque
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import tkinter as tk
+import re
 
 
-QUANTITY = {'=V': ('DC Voltage plot', '[V]'),
-            '~V': ('AC Voltage plot', '[V]'),
-            ' A': ('Current plot', '[A]'),
-            ' O': ('Resistance plot', r'$[\Omega]$'),
-            ' F': ('Capacitance plot', '[F]'),
-            ' H': ('Inductance plot', '[H]'),
-            ' C': ('Temperature plot', r'$[^\circ C]$')}
+QUANTITY = {'=V': ('DC Voltage Plot', '[V]'),
+            '~V': ('AC Voltage Plot', '[V]'),
+            ' V': ('Voltage Plot', '[V]'),
+            '=A': ('DC Current Plot', '[A]'),
+            '~A': ('AC Current Plot', '[A]'),
+            ' A': ('Current Plot', '[A]'),
+            '  ': ('Plot', '[-]'),
+            ' O': ('Resistance Plot', r'$[\Omega]$'),
+            ' F': ('Capacitance Plot', '[F]'),
+            ' H': ('Frequency Plot', '[Hz]'),
+            ' E': ('Electric Field Detection', '[E.F.]'),
+            ' C': ('Celsius Temperature Plot', r'$[^\circ C]$'),
+            ' f': ('Fahrenheit Temperature Plot', r'$[^\circ F]$')}
 
 class PlotFrame(tk.Frame):
-    def __init__(self, root, queueObj, delay, **rest):
+    def __init__(self, root, queueObj, delay, valueL, displayL, infoL, **rest):
         """Arguments:
             root        -> parent object
             queueObj    -> queue.Queue object which services serial dev
@@ -31,6 +38,9 @@ class PlotFrame(tk.Frame):
         self.plotBuffer = deque([0] * 100)           # 100 points plot buffer
         self.queueObj = queueObj
         self.delay = delay
+        self.valueL = valueL
+        self.displayL = displayL
+        self.infoL = infoL
         self.myFigure = mpl.figure.Figure(facecolor=neutral, edgecolor=neutral)
         self.myFigure.subplots_adjust(left=0.15, right=0.85)
         self.myAxes = self.myFigure.add_subplot(1, 1, 1)
@@ -51,9 +61,26 @@ class PlotFrame(tk.Frame):
             [min, max] list"""
         mi = min(dequeObj)
         ma = max(dequeObj)
-        return [mi - (0.1 * mi), ma + (0.1 * ma)]
+        diff = ma - mi
+        adjust = 0.1 * diff
+        adjust = (mi if 0 < mi else (-mi if mi < 0 else 1)) * 0.1 if adjust == 0 else adjust
+        return [mi - adjust, ma + adjust]
 
-    def _setTitle(self, quantity):
+    def _setInfo(self, states):
+        infoLine = ''
+        if 'AUTO' in states:
+            infoLine = infoLine + ', Auto-range'
+        if 'Beep' in states:
+            infoLine = infoLine + ', Beep'
+        if 'Low-Battery' in states:
+            infoLine = infoLine + ', Low-Battery'
+        if 'Low-Impedance' in states:
+            infoLine = infoLine + ', Low-Impedance'
+        if 'dBm' in states:
+            infoLine = infoLine + ', dBm'
+        return re.sub(r'^, ', '', infoLine)
+
+    def _setTitle(self, quantity, states):
         """sets proper plot title according to raw data physical quantity
 
         Arguments:
@@ -61,7 +88,23 @@ class PlotFrame(tk.Frame):
 
         Returns:
             string, updated waveform plot title"""
-        return QUANTITY[quantity][0]
+        headLine = QUANTITY[quantity][0]
+        detailsLine = ''
+        if 'Hold' in states:
+            detailsLine = detailsLine + ', Hold'
+        if 'Relative-Zero' in states:
+            detailsLine = detailsLine + ', Relative'
+        if 'Crest' in states:
+            detailsLine = detailsLine + ', Crest'
+        if('MIN' in states and 'MAX' in states):
+            detailsLine = detailsLine + ', Min-max'
+        else:
+            if 'MIN' in states:
+                detailsLine = detailsLine + ', Min'
+            if 'MAX' in states:
+                detailsLine = detailsLine + ', Max'
+        detailsLine = re.sub(r'^, ', '', detailsLine)
+        return headLine + (('\n' + detailsLine) if detailsLine else '')
 
     def _setLabel(self, label):
         """sets proper plot`s y axis label  according to raw data
@@ -75,14 +118,20 @@ class PlotFrame(tk.Frame):
 
     def plot(self):
         """ploting function using matplotlib and tkinter objects"""
-        buf = self.queueObj.get()
-        self.myAxes.set_title(self._setTitle(buf[2]))   # change title
-        self.myAxes.set_ylabel(self._setLabel(buf[2]))  # change label
-        self.plotBuffer.popleft()                     # remove leftmost element
-        self.plotBuffer.append(buf[1])                # add to right new el
-        self.myLine.set_data(range(100), self.plotBuffer)
-        lim = self._setLimits(self.plotBuffer)
-        self.myAxes.axis([1, 100, lim[0], lim[1]])
+        (time, value, names, display, states) = self.queueObj.get()
+        self.myAxes.set_title(self._setTitle(names, states))  # change title
+        self.myAxes.set_ylabel(self._setLabel(names))         # change label
+        self.displayL.config(text=display)
+        self.infoL.config(text=self._setInfo(states))
+        if (value is not None):
+            self.valueL.config(text=value)
+            self.plotBuffer.popleft()                     # remove leftmost element
+            self.plotBuffer.append(value)                 # add to right new el
+            self.myLine.set_data(range(100), self.plotBuffer)
+            lim = self._setLimits(self.plotBuffer)
+            self.myAxes.axis([1, 100, lim[0], lim[1]])
+        else:
+            self.valueL.config(text='N/A')
         self.canvas.draw()
         self.master.after(self.delay, self.plot)      # recursive!!!
 
